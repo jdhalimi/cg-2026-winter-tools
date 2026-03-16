@@ -1,7 +1,8 @@
-__pycache__
+__pycache__/
 **/__pycache__/
-.pyc
+**/*.pyc
 .pytest_cache/
 .ruff_cache/
 .vscode/
 .idea/
+simulator/__pycache__/*
