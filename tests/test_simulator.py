@@ -37,7 +37,6 @@ from simulator.simulator import (
     parse_body_string,
     parse_dump_lines,
     parse_losses,
-    select_map_scenarios,
     shuffle_in_place,
     write_map_scenarios,
 )
@@ -483,44 +482,6 @@ class TestMapScenarios:
         with pytest.raises(ValueError, match="Incomplete"):
             load_map_scenarios(f)
 
-
-class TestSelectMapScenarios:
-    @pytest.fixture
-    def scenarios(self):
-        return [
-            MapScenario(1, "Alpha", [], []),
-            MapScenario(2, "Beta", [], []),
-            MapScenario(3, "Gamma", [], []),
-        ]
-
-    def test_default_first(self, scenarios):
-        result = select_map_scenarios(scenarios, None, None, False)
-        assert len(result) == 1
-        assert result[0].name == "Alpha"
-
-    def test_all_maps(self, scenarios):
-        result = select_map_scenarios(scenarios, None, None, True)
-        assert len(result) == 3
-
-    def test_by_index(self, scenarios):
-        result = select_map_scenarios(scenarios, 2, None, False)
-        assert result[0].name == "Beta"
-
-    def test_by_name(self, scenarios):
-        result = select_map_scenarios(scenarios, None, "gamma", False)
-        assert result[0].name == "Gamma"
-
-    def test_name_not_found(self, scenarios):
-        with pytest.raises(ValueError, match="not found"):
-            select_map_scenarios(scenarios, None, "delta", False)
-
-    def test_index_out_of_range(self, scenarios):
-        with pytest.raises(ValueError, match="out of range"):
-            select_map_scenarios(scenarios, 10, None, False)
-
-    def test_multiple_selectors_raises(self, scenarios):
-        with pytest.raises(ValueError, match="only one"):
-            select_map_scenarios(scenarios, 1, "Alpha", False)
 
 
 # ─────────────────────────────────────────────────────────────

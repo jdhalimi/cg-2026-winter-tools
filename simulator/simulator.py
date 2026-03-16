@@ -20,7 +20,7 @@ python simulator.py bots/main.py bots/best.py --seed 0 --league-level 4
 python simulator.py bots/main.py bots/best.py \
   --seed 0 --league-level 4 \
   --map-output simulator/generated_maps.txt \
-  --nb-maps 10
+  --count 10
 python simulator.py bots/main.py bots/best.py \
   --global-lines '["0","26","14",...]' \
   --frame-lines '["30","7 2",...]'
@@ -204,33 +204,6 @@ def write_map_scenarios(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(output_lines) + "\n", encoding="utf-8")
 
-
-def select_map_scenarios(
-    scenarios: Sequence[MapScenario],
-    map_index: Optional[int],
-    map_name: Optional[str],
-    all_maps: bool,
-) -> List[MapScenario]:
-    selector_count = int(map_index is not None) + int(map_name is not None) + int(all_maps)
-    if selector_count > 1:
-        raise ValueError("Use only one of --map, --map-name, or --all-maps")
-
-    if all_maps:
-        return list(scenarios)
-
-    if map_name is not None:
-        normalized = map_name.casefold()
-        selected = [scenario for scenario in scenarios if scenario.name.casefold() == normalized]
-        if not selected:
-            raise ValueError(f"Map name not found: {map_name}")
-        return selected
-
-    if map_index is not None:
-        if map_index < 1 or map_index > len(scenarios):
-            raise ValueError(f"Map index out of range: {map_index}")
-        return [scenarios[map_index - 1]]
-
-    return [scenarios[0]]
 
 
 class JavaRandom:
@@ -1141,14 +1114,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--maps", type=Path, help="Path to a map file containing dumped initial states")
     parser.add_argument("--map-output", type=Path, help="Write the selected/generated initial map states to this file")
     parser.add_argument(
-        "--nb-maps",
+        "--count",
         type=int,
         default=1,
         help="Generate this many maps when no explicit map input is provided",
     )
-    parser.add_argument("--map", dest="map_index", type=int, help="1-based map index to run from --maps")
-    parser.add_argument("--map-name", type=str, help="Map name to run from --maps")
-    parser.add_argument("--all-maps", action="store_true", help="Run all maps from --maps")
     parser.add_argument("--weights", type=Path, help="JSON file applied to both bots as META_PARAMS overrides")
     parser.add_argument("--weights-a", type=Path, help="JSON file applied only to player 0 bot")
     parser.add_argument("--weights-b", type=Path, help="JSON file applied only to player 1 bot")
@@ -1187,20 +1157,17 @@ def main() -> None:
     if (args.global_lines is None) != (args.frame_lines is None):
         raise SystemExit("Both --global-lines and --frame-lines must be provided together")
 
-    if args.nb_maps <= 0:
-        raise SystemExit("--nb-maps must be a positive integer")
+    if args.count <= 0:
+        raise SystemExit("--count must be a positive integer")
 
     if args.maps is not None and (args.global_lines is not None or args.frame_lines is not None):
         raise SystemExit("Use either --maps or the pair --global-lines/--frame-lines, not both")
 
-    if args.maps is None and (args.map_index is not None or args.map_name is not None or args.all_maps):
-        raise SystemExit("--map, --map-name, and --all-maps require --maps")
+    if args.count != 1 and args.maps is not None:
+        raise SystemExit("--count cannot be used with --maps")
 
-    if args.nb_maps != 1 and args.maps is not None:
-        raise SystemExit("--nb-maps cannot be used with --maps")
-
-    if args.nb_maps != 1 and (args.global_lines is not None or args.frame_lines is not None):
-        raise SystemExit("--nb-maps cannot be used with --global-lines/--frame-lines")
+    if args.count != 1 and (args.global_lines is not None or args.frame_lines is not None):
+        raise SystemExit("--count cannot be used with --global-lines/--frame-lines")
 
     initial_losses = parse_losses(args.losses)
     shared_params = load_params(args.weights) if args.weights is not None else {}
@@ -1212,10 +1179,9 @@ def main() -> None:
     scenarios: List[Tuple[Optional[str], int, Optional[List[str]], Optional[List[str]]]]
     if args.maps is not None:
         loaded_maps = load_map_scenarios(args.maps)
-        selected_maps = select_map_scenarios(loaded_maps, args.map_index, args.map_name, args.all_maps)
         scenarios = [
             (scenario.name, args.seed, scenario.global_lines, scenario.frame_lines)
-            for scenario in selected_maps
+            for scenario in loaded_maps
         ]
     else:
         initial_global_lines = parse_dump_lines(args.global_lines) if args.global_lines is not None else None
@@ -1224,10 +1190,10 @@ def main() -> None:
             scenarios = [(None, args.seed, initial_global_lines, initial_frame_lines)]
         else:
             scenarios = []
-            for index in range(args.nb_maps):
+            for index in range(args.count):
                 scenario_seed = args.seed + index
                 scenario_name = None
-                if args.nb_maps > 1 or args.map_output is not None:
+                if args.count > 1 or args.map_output is not None:
                     scenario_name = f"generated map {index + 1} seed={scenario_seed} league={args.league_level}"
                 scenarios.append((scenario_name, scenario_seed, None, None))
 

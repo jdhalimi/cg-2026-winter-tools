@@ -12,6 +12,7 @@ public/
 │   └── explorer.py        # Territory-control bot (Voronoi flood-fill, ~600 lines)
 ├── simulator/
 │   ├── simulator.py       # Game engine — runs bot-vs-bot matches locally
+│   ├── generate.py        # Map generator — create maps from seed/league without bots
 │   ├── analyse.py         # Replay analyser — events, metrics, optimization hints
 │   ├── display.py         # Terminal replay viewer with ANSI colours
 │   └── data/
@@ -36,7 +37,7 @@ python simulator/simulator.py bots/skeleton.py bots/wait.py --seed 0 --league-le
 
 # Using a pre-generated map file
 python simulator/simulator.py bots/skeleton.py bots/explorer.py \
-  --maps simulator/data/maps.txt --all-maps
+  --maps simulator/data/maps.txt
 ```
 
 Output shows per-game results: winner, scores, losses, and a summary table when running multiple maps.
@@ -46,7 +47,7 @@ Output shows per-game results: winner, scores, losses, and a summary table when 
 ```bash
 # Record
 python simulator/simulator.py bots/explorer.py bots/skeleton.py \
-  --maps simulator/data/maps.txt --map 1 --output game.txt
+  --maps simulator/data/maps.txt --output game.txt
 
 # Replay in terminal (auto-advance)
 python simulator/display.py game.txt --delay 0.15
@@ -58,9 +59,13 @@ python simulator/display.py game.txt -i
 ### 3. Generate maps
 
 ```bash
+# Standalone map generation (no bots needed)
+python simulator/generate.py --seed 42 --count 20 --league-level 4 -o my_maps.txt
+
+# Or via the simulator (also runs the match)
 python simulator/simulator.py bots/wait.py bots/wait.py \
   --seed 42 --league-level 4 \
-  --nb-maps 20 \
+  --count 20 \
   --map-output my_maps.txt
 ```
 
@@ -195,11 +200,8 @@ python simulator/simulator.py BOT_A BOT_B [OPTIONS]
 | `--seed N` | Java Random seed for map generation (default: 0) |
 | `--league-level N` | Grid complexity 1–4 (default: 4) |
 | `--max-turns N` | Maximum turns before game ends (default: 200) |
-| `--maps FILE` | Load maps from a pre-generated map file |
-| `--map N` | Run only map N (1-based) from `--maps` |
-| `--map-name NAME` | Run the named map from `--maps` |
-| `--all-maps` | Run all maps from `--maps` |
-| `--nb-maps N` | Generate N random maps (default: 1) |
+| `--maps FILE` | Load and run all maps from a pre-generated map file |
+| `--count N` | Generate N random maps (default: 1) |
 | `--map-output FILE` | Save generated/selected maps to file |
 | `--output FILE` | Record game frames for replay with `display.py` |
 | `--weights FILE` | JSON weight overrides applied to both bots |
@@ -285,7 +287,7 @@ Values in the JSON override the bot's `META_PARAMS` defaults.
 5. **Contest power sources** — if you're closer to a fruit than the enemy, prioritise it.
 6. **Handle collisions** — sometimes a head-on collision is worth it if you're longer.
 7. **Use `display.py`** — watching replays reveals bugs that logs don't.
-8. **Test against multiple bots** — run `--all-maps` to find weaknesses across diverse maps.
+8. **Test against multiple bots** — run `--maps` to find weaknesses across diverse maps.
 
 ---
 
