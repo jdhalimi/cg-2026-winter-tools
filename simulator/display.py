@@ -21,7 +21,7 @@ import platform
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple, cast
 
 RESET = "\033[0m"
 BOLD = "\033[1m"
@@ -221,13 +221,15 @@ def _read_key() -> str:
     """Read a single keypress. Returns 'right', 'left', 'q', 'enter', or the char."""
     if platform.system() == "Windows":
         import msvcrt
-        ch = msvcrt.getch()
-        if ch in (b"\xe0", b"\x00"):  # special key prefix
-            ch2 = msvcrt.getch()
-            return {b"M": "right", b"K": "left", b"H": "up", b"P": "down"}.get(ch2, "")
-        if ch == b"\r":
+
+        getch = cast(Callable[[], bytes], getattr(msvcrt, "getch"))
+        win_ch = getch()
+        if win_ch in (b"\xe0", b"\x00"):  # special key prefix
+            special = getch()
+            return {b"M": "right", b"K": "left", b"H": "up", b"P": "down"}.get(special, "")
+        if win_ch == b"\r":
             return "enter"
-        return ch.decode("utf-8", errors="replace")
+        return win_ch.decode("utf-8", errors="replace")
     else:
         import termios
         import tty
@@ -235,16 +237,16 @@ def _read_key() -> str:
         old = termios.tcgetattr(fd)
         try:
             tty.setraw(fd)
-            ch = sys.stdin.read(1)
-            if ch == "\x1b":
-                ch2 = sys.stdin.read(1)
-                if ch2 == "[":
-                    ch3 = sys.stdin.read(1)
-                    return {"C": "right", "D": "left", "A": "up", "B": "down"}.get(ch3, "")
+            char = sys.stdin.read(1)
+            if char == "\x1b":
+                next_char = sys.stdin.read(1)
+                if next_char == "[":
+                    arrow_char = sys.stdin.read(1)
+                    return {"C": "right", "D": "left", "A": "up", "B": "down"}.get(arrow_char, "")
                 return ""
-            if ch in ("\r", "\n"):
+            if char in ("\r", "\n"):
                 return "enter"
-            return ch
+            return char
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
@@ -322,7 +324,12 @@ def main() -> None:
     parser.add_argument("input", type=Path, help="Game file written by simulator --output")
     parser.add_argument("--delay", type=float, default=0.2, help="Seconds between frames in auto mode (default 0.2)")
     parser.add_argument("--interactive", "-i", action="store_true", help="Step frame by frame with arrow keys")
-    parser.add_argument("--game", type=int, default=1, help="Which game to display if file has multiple (1-based, default 1)")
+    parser.add_argument(
+        "--game",
+        type=int,
+        default=1,
+        help="Which game to display if file has multiple (1-based, default 1)",
+    )
     parser.add_argument("--no-color", action="store_true", help="Disable ANSI colors")
     args = parser.parse_args()
 

@@ -458,7 +458,11 @@ class TestMapScenarios:
     def test_write_and_reload(self, tmp_path):
         out = tmp_path / "test_maps.txt"
         data = [
-            ("test map", ["0", "4", "3", "....", "....", "####", "1", "0", "1"], ["2", "1 1", "2 2", "2", "0 1,1:1,2:1,3", "1 2,1:2,2:2,3"]),
+            (
+                "test map",
+                ["0", "4", "3", "....", "....", "####", "1", "0", "1"],
+                ["2", "1 1", "2 2", "2", "0 1,1:1,2:1,3", "1 2,1:2,2:2,3"],
+            ),
         ]
         write_map_scenarios(out, data)
         loaded = load_map_scenarios(out)

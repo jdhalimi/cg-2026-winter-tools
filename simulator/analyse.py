@@ -34,7 +34,7 @@ import sys
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, TypedDict, cast
 
 # ─────────────────────────────────────────────────────────────
 # Constantes
@@ -113,6 +113,34 @@ class GameLog:
     turns: List[TurnData] = field(default_factory=list)
 
 
+class PendingTurn(TypedDict, total=False):
+    turn_num: int
+    total_turns: int
+    moves_a: Dict[int, str]
+    moves_b: Dict[int, str]
+    debug: Dict[int, SnakeDebug]
+
+
+class P1Stats(TypedDict):
+    eat_turns: List[int]
+    collision_turns: List[int]
+    doomed_turns: List[int]
+    fall_events: List[Tuple[int, int, int]]
+    direction_counts: Counter[str]
+    avg_score: float
+    score_volatility: float
+    avg_fruit_chase_rate: float
+    score_series: List[float]
+
+
+class P2Stats(TypedDict):
+    direction_counts: Counter[str]
+    avg_fruit_chase_rate: float
+    avg_aggression_rate: float
+    direction_change_rate: float
+    total_moves: int
+
+
 # ─────────────────────────────────────────────────────────────
 # Parsers
 # ─────────────────────────────────────────────────────────────
@@ -158,15 +186,19 @@ def _parse_turn_state(state_list: List[str]) -> Tuple[Set[Coord], Dict[int, List
         return fruits, snakes
     try:
         i = 0
-        n_fruits = int(state_list[i]); i += 1
+        n_fruits = int(state_list[i])
+        i += 1
         for _ in range(n_fruits):
-            x, y = map(int, state_list[i].split()); i += 1
+            x, y = map(int, state_list[i].split())
+            i += 1
             fruits.add((x, y))
         if i >= len(state_list):
             return fruits, snakes
-        n_snakes = int(state_list[i]); i += 1
+        n_snakes = int(state_list[i])
+        i += 1
         for _ in range(n_snakes):
-            parts = state_list[i].split(" ", 1); i += 1
+            parts = state_list[i].split(" ", 1)
+            i += 1
             sid = int(parts[0])
             body = []
             for raw_cell in parts[1].split(":"):
@@ -193,16 +225,21 @@ def _parse_initial_state(
 ) -> Tuple[int, int, int, Set[Coord], int, List[int], List[int]]:
     """Retourne (player_id, width, height, walls, snakes_per_player, my_ids, opp_ids)."""
     i = 0
-    player_id = int(state_list[i]); i += 1
-    width = int(state_list[i]); i += 1
-    height = int(state_list[i]); i += 1
+    player_id = int(state_list[i])
+    i += 1
+    width = int(state_list[i])
+    i += 1
+    height = int(state_list[i])
+    i += 1
     walls: Set[Coord] = set()
     for y in range(height):
-        row = state_list[i]; i += 1
+        row = state_list[i]
+        i += 1
         for x, ch in enumerate(row):
             if ch == "#":
                 walls.add((x, y))
-    snakes_pp = int(state_list[i]); i += 1
+    snakes_pp = int(state_list[i])
+    i += 1
     my_ids = [int(state_list[i + j]) for j in range(snakes_pp)]
     i += snakes_pp
     opp_ids = [int(state_list[i + j]) for j in range(snakes_pp)]
@@ -249,7 +286,7 @@ def _parse_stdout_segment(
     Retourne (moves, turn_num, total_turns).
     turn_num == 0 si ce segment n'a pas de compteur de tour (stdout secondaire).
     """
-    non_empty = [l.strip() for l in seg.content if l.strip()]
+    non_empty = [line.strip() for line in seg.content if line.strip()]
     if not non_empty:
         return {}, 0, 0
     moves = _parse_moves(non_empty[0])
@@ -297,10 +334,10 @@ def _extract_player_header(
     Les defauts sont ("Bot-1", "Bot-2", 1, 2).
     """
     first_sortie = next(
-        (j for j, l in enumerate(lines) if l.strip() in (STDERR_MARKER, STDOUT_MARKER)),
+        (j for j, line in enumerate(lines) if line.strip() in (STDERR_MARKER, STDOUT_MARKER)),
         len(lines),
     )
-    header = [l.strip() for l in lines[:first_sortie] if l.strip()]
+    header = [line.strip() for line in lines[:first_sortie] if line.strip()]
 
     # Pattern attendu : rank (chiffre), suffix (er/eme/…), nom, rank, suffix, nom
     try:
@@ -341,7 +378,7 @@ def parse_game_log(path: Path) -> GameLog:
 
     # -- Accumulateur par tour
     # Cle: turn_num ; valeur: dict partiel
-    pending: Dict[str, object] = {}
+    pending: PendingTurn = {}
 
     def flush_turn() -> None:
         """Finalise et enregistre le tour en attente si complet."""
@@ -361,15 +398,17 @@ def parse_game_log(path: Path) -> GameLog:
         else:
             p1_moves, p2_moves = moves_a, moves_b
 
-        turns.append(TurnData(
-            turn=int(turn_num),
-            total_turns=int(pending.get("total_turns", 0)),  # type: ignore
-            fruits=set(current_fruits),
-            snakes_actual=dict(current_snakes),
-            debug=dict(pending.get("debug", {})),  # type: ignore
-            p1_moves=p1_moves,
-            p2_moves=p2_moves,
-        ))
+        turns.append(
+            TurnData(
+                turn=turn_num,
+                total_turns=pending.get("total_turns", 0),
+                fruits=set(current_fruits),
+                snakes_actual=dict(current_snakes),
+                debug=dict(pending.get("debug", {})),
+                p1_moves=p1_moves,
+                p2_moves=p2_moves,
+            )
+        )
 
     for seg in segments:
         if seg.kind == "stdout":
@@ -377,10 +416,11 @@ def parse_game_log(path: Path) -> GameLog:
             if turn_num:
                 # Ce bloc est le "stdout primaire" : il demarre ou termine un tour
                 flush_turn()
-                pending.clear()
-                pending["turn_num"] = turn_num
-                pending["total_turns"] = total_turns
-                pending["moves_a"] = moves
+                pending = {
+                    "turn_num": turn_num,
+                    "total_turns": total_turns,
+                    "moves_a": moves,
+                }
             else:
                 # Stdout secondaire : mouvements de l'autre joueur
                 pending["moves_b"] = moves
@@ -496,15 +536,15 @@ def _add_coord(c: Coord, d: Tuple[int, int]) -> Coord:
     return (c[0] + d[0], c[1] + d[1])
 
 
-def _classify_strategy_p1(game: GameLog) -> Dict[str, object]:
+def _classify_strategy_p1(game: GameLog) -> P1Stats:
     """Analyse détaillée du bot P1 grâce aux données de debug."""
-    eat_turns = []
-    collision_turns = []
-    doomed_turns = []
-    fall_events = []
+    eat_turns: List[int] = []
+    collision_turns: List[int] = []
+    doomed_turns: List[int] = []
+    fall_events: List[Tuple[int, int, int]] = []
     score_series: List[float] = []
-    direction_counts: Counter = Counter()
-    fruit_chase_rate = []   # proportion de tours où le bot va vers le fruit le plus proche
+    direction_counts: Counter[str] = Counter()
+    fruit_chase_rate: List[int] = []  # proportion de tours où le bot va vers le fruit le plus proche
 
     for td in game.turns:
         if not td.debug:
@@ -556,14 +596,14 @@ def _classify_strategy_p1(game: GameLog) -> Dict[str, object]:
     }
 
 
-def _classify_strategy_p2(game: GameLog) -> Dict[str, object]:
+def _classify_strategy_p2(game: GameLog) -> P2Stats:
     """
     Inférence de la stratégie de P2 à partir de ses mouvements et de l'état du plateau.
     Pas de données de debug pour P2.
     """
-    direction_counts: Counter = Counter()
-    fruit_chase_rate = []
-    aggression_rate = []   # proportion de tours où P2 se rapproche d'un snake P1
+    direction_counts: Counter[str] = Counter()
+    fruit_chase_rate: List[int] = []
+    aggression_rate: List[int] = []  # proportion de tours où P2 se rapproche d'un snake P1
     direction_changes = 0
     total_moves = 0
     prev_dirs: Dict[int, str] = {}
@@ -617,54 +657,66 @@ def _classify_strategy_p2(game: GameLog) -> Dict[str, object]:
     }
 
 
-def _infer_strategy_label(stats: Dict[str, object], is_p1: bool) -> str:
-    """Retourne une étiquette de stratégie à partir des statistiques."""
-    fruit_chase = float(stats.get("avg_fruit_chase_rate", 0))  # type: ignore
+def _infer_strategy_label_p1(stats: P1Stats) -> str:
+    """Retourne une étiquette de stratégie pour P1 à partir des statistiques."""
+    fruit_chase = stats["avg_fruit_chase_rate"]
     labels = []
 
-    if is_p1:
-        avg_score = float(stats.get("avg_score", 0))  # type: ignore
-        doomed = len(stats.get("doomed_turns", []))   # type: ignore
-        fall_events = stats.get("fall_events", [])    # type: ignore
-        falls = len([f for f in fall_events if f[2] >= 2])  # type: ignore
+    avg_score = stats["avg_score"]
+    doomed = len(stats["doomed_turns"])
+    fall_events = stats["fall_events"]
+    falls = len([fall for fall in fall_events if fall[2] >= 2])
 
-        if fruit_chase > 0.65:
-            labels.append("chasseur de fruits (greedy)")
-        elif fruit_chase > 0.45:
-            labels.append("semi-greedy (fruits + tactique)")
-        else:
-            labels.append("tactique / controle de territoire")
-
-        if doomed > 0:
-            labels.append(f"accule {doomed}x (score=-inf)")
-        if falls > 1:
-            labels.append(f"chutes frequentes ({falls}x)")
-        if avg_score > 300:
-            labels.append("evaluations confiantes (score moyen eleve)")
-        elif avg_score < 50:
-            labels.append("evaluations prudentes (score moyen faible)")
+    if fruit_chase > 0.65:
+        labels.append("chasseur de fruits (greedy)")
+    elif fruit_chase > 0.45:
+        labels.append("semi-greedy (fruits + tactique)")
     else:
-        aggression = float(stats.get("avg_aggression_rate", 0))  # type: ignore
-        dir_change = float(stats.get("direction_change_rate", 0))  # type: ignore
+        labels.append("tactique / controle de territoire")
 
-        if fruit_chase > 0.65:
-            labels.append("chasseur de fruits (greedy)")
-        elif fruit_chase > 0.45:
-            labels.append("semi-greedy")
-        else:
-            labels.append("non-greedy (controle / attente ?)")
-
-        if aggression > 0.5:
-            labels.append("agressif (rapprochement vers P1)")
-        elif aggression < 0.3:
-            labels.append("defensif / evite P1")
-
-        if dir_change > 0.5:
-            labels.append("reactif (beaucoup de changements de direction)")
-        elif dir_change < 0.2:
-            labels.append("persistant (peu de changements de direction)")
+    if doomed > 0:
+        labels.append(f"accule {doomed}x (score=-inf)")
+    if falls > 1:
+        labels.append(f"chutes frequentes ({falls}x)")
+    if avg_score > 300:
+        labels.append("evaluations confiantes (score moyen eleve)")
+    elif avg_score < 50:
+        labels.append("evaluations prudentes (score moyen faible)")
 
     return " | ".join(labels) if labels else "indetermine"
+
+def _infer_strategy_label_p2(stats: P2Stats) -> str:
+    """Retourne une étiquette de stratégie pour P2 à partir des statistiques."""
+    fruit_chase = stats["avg_fruit_chase_rate"]
+    aggression = stats["avg_aggression_rate"]
+    dir_change = stats["direction_change_rate"]
+    labels = []
+
+    if fruit_chase > 0.65:
+        labels.append("chasseur de fruits (greedy)")
+    elif fruit_chase > 0.45:
+        labels.append("semi-greedy")
+    else:
+        labels.append("non-greedy (controle / attente ?)")
+
+    if aggression > 0.5:
+        labels.append("agressif (rapprochement vers P1)")
+    elif aggression < 0.3:
+        labels.append("defensif / evite P1")
+
+    if dir_change > 0.5:
+        labels.append("reactif (beaucoup de changements de direction)")
+    elif dir_change < 0.2:
+        labels.append("persistant (peu de changements de direction)")
+
+    return " | ".join(labels) if labels else "indetermine"
+
+
+def _infer_strategy_label(stats: P1Stats | P2Stats, is_p1: bool) -> str:
+    """Compatibilité descendante pour les tests et les appels existants."""
+    if is_p1:
+        return _infer_strategy_label_p1(cast(P1Stats, stats))
+    return _infer_strategy_label_p2(cast(P2Stats, stats))
 
 
 # ─────────────────────────────────────────────────────────────
@@ -674,17 +726,17 @@ def _infer_strategy_label(stats: Dict[str, object], is_p1: bool) -> str:
 def build_optimization_hints(
     game: GameLog,
     events: List[Event],
-    p1_stats: Dict[str, object],
+    p1_stats: P1Stats,
 ) -> List[str]:
     hints = []
 
-    doomed_turns = p1_stats.get("doomed_turns", [])   # type: ignore
-    collision_turns = p1_stats.get("collision_turns", [])  # type: ignore
-    fall_events = p1_stats.get("fall_events", [])  # type: ignore
-    eat_turns = p1_stats.get("eat_turns", [])  # type: ignore
-    avg_score = float(p1_stats.get("avg_score", 0))  # type: ignore
-    fruit_chase = float(p1_stats.get("avg_fruit_chase_rate", 0))  # type: ignore
-    score_series = p1_stats.get("score_series", [])  # type: ignore
+    doomed_turns = p1_stats["doomed_turns"]
+    collision_turns = p1_stats["collision_turns"]
+    fall_events = p1_stats["fall_events"]
+    eat_turns = p1_stats["eat_turns"]
+    avg_score = p1_stats["avg_score"]
+    fruit_chase = p1_stats["avg_fruit_chase_rate"]
+    score_series = p1_stats["score_series"]
 
     total_turns = game.turns[-1].total_turns if game.turns else 0
 
@@ -726,7 +778,7 @@ def build_optimization_hints(
         )
 
     # 4. Chutes frequentes
-    big_falls = [(t, sid, fd) for t, sid, fd in fall_events if fd >= 3]  # type: ignore
+    big_falls = [(t, sid, fd) for t, sid, fd in fall_events if fd >= 3]
     if big_falls:
         hints.append(
             f"[GRAVITE] {len(big_falls)} chute(s) de 3+ cases detectee(s) "
@@ -751,11 +803,11 @@ def build_optimization_hints(
     )
     p1_fruits_eaten = len(eat_turns)
     p2_events = [e for e in events if e.kind == "eat" and e.player == 2]
-    p2_fruits_estimated = sum(
-        int(re.search(r"~(\d+)", e.detail).group(1))
-        for e in p2_events
-        if re.search(r"~(\d+)", e.detail)
-    )
+    p2_fruits_estimated = 0
+    for event in p2_events:
+        match = re.search(r"~(\d+)", event.detail)
+        if match is not None:
+            p2_fruits_estimated += int(match.group(1))
     if total_initial_fruits > 0 and p2_fruits_estimated > p1_fruits_eaten:
         hints.append(
             f"[COMPETITION] J2 a mange ~{p2_fruits_estimated} fruits contre "
@@ -836,12 +888,12 @@ def print_report(game: GameLog, verbose: bool = False) -> None:
     print(f"  ANALYSE DU BOT P1 - {game.p1_name} (debug complet disponible)")
     print(sep)
 
-    eat_count = len(p1_stats["eat_turns"])  # type: ignore
-    doomed_count = len(p1_stats["doomed_turns"])  # type: ignore
-    fall_count = len(p1_stats["fall_events"])  # type: ignore
+    eat_count = len(p1_stats["eat_turns"])
+    doomed_count = len(p1_stats["doomed_turns"])
+    fall_count = len(p1_stats["fall_events"])
     avg_score = p1_stats["avg_score"]
-    score_series = p1_stats["score_series"]  # type: ignore
-    dir_counts = p1_stats["direction_counts"]  # type: ignore
+    score_series = p1_stats["score_series"]
+    dir_counts = p1_stats["direction_counts"]
 
     print(f"  Fruits manges       : {eat_count}")
     print(f"  Tours accule (-inf) : {doomed_count}  (tours: {p1_stats['doomed_turns']})")
@@ -851,12 +903,11 @@ def print_report(game: GameLog, verbose: bool = False) -> None:
     print(f"  Chasse aux fruits   : {p1_stats['avg_fruit_chase_rate']:.0%}")
 
     print("\n  Distribution des directions P1:")
-    sum(dir_counts.values())
     for d in ["UP", "DOWN", "LEFT", "RIGHT"]:
         cnt = dir_counts.get(d, 0)
         print(f"    {d:6s}  {cnt:4d}  {_bar(cnt, max(dir_counts.values(), default=1))}")
 
-    print(f"\n  Strategie inferee P1 : {_infer_strategy_label(p1_stats, True)}")
+    print(f"\n  Strategie inferee P1 : {_infer_strategy_label_p1(p1_stats)}")
 
     if verbose and isinstance(score_series, list) and score_series:
         print("\n  Evolution du score moyen d'evaluation par tour :")
@@ -871,7 +922,7 @@ def print_report(game: GameLog, verbose: bool = False) -> None:
     print(f"  ANALYSE DU BOT P2 - {game.p2_name} (inference mouvements uniquement)")
     print(sep)
 
-    dir_counts_p2 = p2_stats["direction_counts"]  # type: ignore
+    dir_counts_p2 = p2_stats["direction_counts"]
     total_moves_p2 = p2_stats["total_moves"]
 
     p2_events_eat = [e for e in events if e.kind == "eat" and e.player == 2]
@@ -893,7 +944,7 @@ def print_report(game: GameLog, verbose: bool = False) -> None:
             cnt = dir_counts_p2.get(d, 0)
             print(f"    {d:6s}  {cnt:4d}  {_bar(cnt, max(dir_counts_p2.values(), default=1))}")
 
-    print(f"\n  Strategie inferee P2 : {_infer_strategy_label(p2_stats, False)}")
+    print(f"\n  Strategie inferee P2 : {_infer_strategy_label_p2(p2_stats)}")
 
     # -- Pistes d'optimisation
     hints = build_optimization_hints(game, events, p1_stats)
@@ -903,16 +954,17 @@ def print_report(game: GameLog, verbose: bool = False) -> None:
     for idx, hint in enumerate(hints, 1):
         # Wrap à 68 chars
         words = hint.split()
-        _lines_out, cur = [], ""
+        cur = ""
+        prefix: str | int = idx
         for w in words:
             if len(cur) + len(w) + 1 > 68:
-                print(f"  {idx if not cur else ' '}. {cur}")
+                print(f"  {prefix if not cur else ' '}. {cur}")
                 cur = w
-                idx = " "  # type: ignore
+                prefix = " "
             else:
                 cur = (cur + " " + w).strip()
         if cur:
-            print(f"  {idx}. {cur}")
+            print(f"  {prefix}. {cur}")
         print()
 
     print("=" * 72)
@@ -928,9 +980,10 @@ def main() -> None:
 
     # Forcer UTF-8 sur stdout/stderr Windows avant tout affichage
     for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
             try:
-                stream.reconfigure(encoding="utf-8")
+                reconfigure(encoding="utf-8")
             except Exception:
                 pass
 

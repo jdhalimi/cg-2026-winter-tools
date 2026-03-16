@@ -520,7 +520,8 @@ class GridMaker:
         potential_spawns = [
             coord
             for coord in grid.coords
-            if grid.get_type(coord) == TYPE_WALL and len(self.get_free_above(grid, coord, self.SPAWN_HEIGHT)) >= self.SPAWN_HEIGHT
+            if grid.get_type(coord) == TYPE_WALL
+            and len(self.get_free_above(grid, coord, self.SPAWN_HEIGHT)) >= self.SPAWN_HEIGHT
         ]
         shuffle_in_place(potential_spawns, self.random)
 
@@ -901,7 +902,10 @@ class SnakebirdSimulator:
             if WAIT_PATTERN.match(command):
                 continue
 
-            self.deactivate_player(player, f"Invalid input from player {player.index}: expected MESSAGE text, got {command!r}")
+            self.deactivate_player(
+                player,
+                f"Invalid input from player {player.index}: expected MESSAGE text, got {command!r}",
+            )
             return
 
         self.summary.extend(errors[:4])
@@ -943,7 +947,12 @@ class SnakebirdSimulator:
                 bird.body.insert(0, new_head)
 
     def do_eats(self) -> None:
-        apples_eaten = {bird.head() for player in self.players for bird in player.birds if bird.alive and bird.head() in self.grid.apples}
+        apples_eaten = {
+            bird.head()
+            for player in self.players
+            for bird in player.birds
+            if bird.alive and bird.head() in self.grid.apples
+        }
         if apples_eaten:
             self.grid.apples = [apple for apple in self.grid.apples if apple not in apples_eaten]
 
@@ -1105,8 +1114,16 @@ def _run_scenario_worker(
         initial_losses=task.initial_losses,
         bot_params=task.bot_params,
     )
-    effective_global = list(task.global_lines) if task.global_lines is not None else sim.serialize_global_info_for(sim.players[0])
-    effective_frame = list(task.frame_lines) if task.frame_lines is not None else sim.serialize_frame_info_for(sim.players[0])
+    effective_global = (
+        list(task.global_lines)
+        if task.global_lines is not None
+        else sim.serialize_global_info_for(sim.players[0])
+    )
+    effective_frame = (
+        list(task.frame_lines)
+        if task.frame_lines is not None
+        else sim.serialize_frame_info_for(sim.players[0])
+    )
     effective_name = task.name
     if effective_name is None and task.need_map_output:
         effective_name = f"generated map seed={task.seed} league={task.league_level}"
@@ -1123,7 +1140,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-turns", type=int, default=200, help="Maximum number of turns")
     parser.add_argument("--maps", type=Path, help="Path to a map file containing dumped initial states")
     parser.add_argument("--map-output", type=Path, help="Write the selected/generated initial map states to this file")
-    parser.add_argument("--nb-maps", type=int, default=1, help="Generate this many maps when no explicit map input is provided")
+    parser.add_argument(
+        "--nb-maps",
+        type=int,
+        default=1,
+        help="Generate this many maps when no explicit map input is provided",
+    )
     parser.add_argument("--map", dest="map_index", type=int, help="1-based map index to run from --maps")
     parser.add_argument("--map-name", type=str, help="Map name to run from --maps")
     parser.add_argument("--all-maps", action="store_true", help="Run all maps from --maps")
@@ -1191,7 +1213,10 @@ def main() -> None:
     if args.maps is not None:
         loaded_maps = load_map_scenarios(args.maps)
         selected_maps = select_map_scenarios(loaded_maps, args.map_index, args.map_name, args.all_maps)
-        scenarios = [(scenario.name, args.seed, scenario.global_lines, scenario.frame_lines) for scenario in selected_maps]
+        scenarios = [
+            (scenario.name, args.seed, scenario.global_lines, scenario.frame_lines)
+            for scenario in selected_maps
+        ]
     else:
         initial_global_lines = parse_dump_lines(args.global_lines) if args.global_lines is not None else None
         initial_frame_lines = parse_dump_lines(args.frame_lines) if args.frame_lines is not None else None
@@ -1274,7 +1299,8 @@ def main() -> None:
             print(f"Tie after {result['turns']} turns | scores={result['scores']} | losses={result['losses']}")
         else:
             print(
-                f"Winner: player {winner} | turns={result['turns']} | scores={result['scores']} | losses={result['losses']}"
+                f"Winner: player {winner} | turns={result['turns']} | "
+                f"scores={result['scores']} | losses={result['losses']}"
             )
         for player in result["players"]:
             status = "active" if player["active"] else f"inactive ({player['reason']})"
